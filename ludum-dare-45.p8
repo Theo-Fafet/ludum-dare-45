@@ -6,24 +6,24 @@ __lua__
     function _init()
         init_player()
         init_camera()
-		--init_random_stuff() --remove later
     end
 
     function _update()
-        update_player()
         update_bodies()
-        update_camera()
+        update_props()
+        update_player()
+		update_camera()
 		if (btnp(5)) then
-			b=box_center(player.body.box)
-			blood(b.x, b.y)
+			fire_ball(16, 88, 5,-7)
 		end
     end
 
     function _draw()
         draw_camera()
         draw_map()
-        draw_player()
 		draw_particles()
+        draw_player()
+        draw_props()
 		--print(str_num(player.body.speed.x).." "..str_num(player.body.speed.y), 0, 10, 7)
 
 		debug()
@@ -31,12 +31,12 @@ __lua__
 
 	debug_mode=false
 	function debug()
-		if (stat(31)=="b" or btnp(4)) debug_mode = not debug_mode
+		if(stat(31)=="b" or btnp(4)) debug_mode = not debug_mode
 		if (debug_mode)then
 			draw_clear_box(abs_box(67, 87, 127, 127))
 			printui('ram: '..stat(0), 69, 89, 4)
 			printui('cpu1: '..stat(1), 69, 99,4)
-			printui('cpu2: '..stat(2), 69, 109,4)
+			printui('npar: '..nparts, 69, 109,4)
 		end
 	end
 
@@ -45,7 +45,7 @@ __lua__
 
     function init_player()
 		player={
-            body=new_body(64, 64, 15, 15, 0b010, 0b101, 0.3, 0, 100),
+            body=new_body(64, 64, 15, 15, 0b010, 0b101),
 			cols=new_check_cols(),
 			anim={
 				idle=create_anim_w_by_h({0, 2, 4}, 2, 2, false, false, .5),
@@ -53,8 +53,11 @@ __lua__
 				move_left=create_anim_w_by_h({6, 8, 10}, 2, 2, true, false, .5),
 				wall_right=create_anim_w_by_h({34}, 2, 2, true, false, 0),
 				wall_left=create_anim_w_by_h({34}, 2, 2, false, false, 0),
-				jump=create_anim_w_by_h({32}, 2, 2, false, false, 0)
-			}
+				jump=create_anim_w_by_h({32}, 2, 2, false, false, 0),
+				crouch_right=create_anim_w_by_h({36}, 2, 2, false, false, 0),
+				crouch_left=create_anim_w_by_h({36}, 2, 2, true, false, 0)
+			},
+			crouch=false
         }
 	end
 
@@ -62,75 +65,106 @@ __lua__
 		move_player()
 		old_cols = cpy(player.cols)
 		check_cols(player.body.box, player.cols, player.body.col_with)
-		if (not old_cols.b and player.cols.b) then
+		if (not old_cols.bools.b and player.cols.bools.b) then
 			b=box_center(player.body.box)
-			air_blow(b.x, b.y+8, 5, 1)
+			air_blow(b.x, b.y+8, 10, 1, 5)
 		end
 	end
 
     function move_player()
         dx=(btn(0) and-1 or 0)+(btn(1) and 1 or 0)
         player.body.speed.x += dx*1.5
+		player.crouch=(player.cols.bools.b and btn(3))
 		if (btnp(2)) then
-			if (player.cols.b) then
+			if (player.cols.bools.b) then
 				b=box_center(player.body.box)
-				air_blow(b.x, b.y+8, 10, 1)
+				air_blow(b.x, b.y+8, 10, 1, 10)
 				player.body.speed.y += -10
-			elseif (not player.cols.b and player.cols.r and not player.cols.l) then
+			elseif (not player.cols.bools.b and player.cols.bools.r and not player.cols.bools.l) then
 				b=box_center(player.body.box)
-				air_blow(b.x+8, b.y, 1, 10)
+				air_blow(b.x+8, b.y, 1, 10, 10)
 				player.body.speed.x += -15
 				player.body.speed.y += -20
-			elseif (not player.cols.b and not player.cols.r and player.cols.l) then
+			elseif (not player.cols.bools.b and not player.cols.bools.r and player.cols.bools.l) then
 				b=box_center(player.body.box)
-				air_blow(b.x-6, b.y, 1, 10)
+				air_blow(b.x-6, b.y, 1, 10, 10)
 				player.body.speed.x += 15
 				player.body.speed.y += -20
 			end
 		end
-		if (player.cols.b and dx == 0) then
+		if (player.cols.bools.b and dx == 0) then
 			player.body.speed.x *= 0.5
 		end
-		if (not player.cols.b and player.body.speed.y > 0 and (player.cols.l or player.cols.r)) then
+		if (not player.cols.bools.b and player.body.speed.y > 0 and (player.cols.bools.l or player.cols.bools.r)) then
 			player.body.speed.y *= 0.5
 		end
+		
     end
 
 	function draw_player()
 		x = player.body.box.l y = player.body.box.t
-		if (player.cols.b) then
-			if (player.body.speed.x >= 1) then draw_anim(x, y, player.anim.move_right) printui("mr", 20, 40, 7)
-			elseif (player.body.speed.x <= 1) then draw_anim(x, y, player.anim.move_left) printui("ml", 20, 40, 7)
-			else draw_anim(x, y, player.anim.idle) printui("il", 20, 40, 7) end
-		elseif (player.cols.l) then draw_anim(x, y, player.anim.wall_left) printui("wl", 20, 40, 7)
-		elseif (player.cols.r) then draw_anim(x, y, player.anim.wall_right) printui("wr", 20, 40, 7)
-		else draw_anim(x, y, player.anim.jump) printui("jm", 20, 40, 7) end
+		if (player.cols.bools.b) then
+			if (player.body.speed.x >= 1) then draw_anim(x, y, player.anim.move_right)
+			elseif (player.body.speed.x <= -1) then draw_anim(x, y, player.anim.move_left)
+			elseif (player.crouch) then 
+				if (player.body.speed.x<0) then draw_anim(x, y, player.anim.crouch_left)
+				else draw_anim(x, y, player.anim.crouch_right) end
+			else draw_anim(x, y, player.anim.idle) end
+		elseif (player.cols.bools.l) then draw_anim(x, y, player.anim.wall_left)
+		elseif (player.cols.bools.r) then draw_anim(x, y, player.anim.wall_right)
+		else draw_anim(x, y, player.anim.jump) end
 		
 	end
 
---> SOME RANDOM OBJECTS DOR TESTING
-	function init_random_stuff()
-		for i=0,5,1 do
-			new_body(150+i*15, 100, 7, 7, 0b100, 0b101, 1, 16, 0)
-			new_body(165+i*19, 100, 7, 7, 0b1000, 0b111, 1, 17, 1)
+	function try_kill_player(cols)
+		for _,m in pairs(cols.masks) do
+			if (band(m, 0b10) != 0) then
+				player_die()
+			end
 		end
+	end
+
+	function player_die()
+		cam_shake(5, 5, .2, 10, 10)		
+		blood(box_center(player.body.box))
+		remove_body(player.body)
+		init_player()
 	end
 
 -->8
 -->8 CAMERA AND MAP
-    cam={x=0,y=0}
-	cam_bounds={}
-
+	cam={}
     function init_camera()
-		cam_bounds=abs_box(48,48,80,80)
+		cam={
+			x=0,y=0,
+			bounds=abs_box(60,60,68,68),
+			shake = {x=0, y=0, t=0, fx=0, fy=0}
+		}
 	end
 
     function update_camera()
-		cam_follow(player.body.box)
+		cam_focus(player.body.box)
+		if (cam.shake.t > 0) then
+			cam.x += cam.shake.x * cos(3.1415*0.5 * cam.shake.fx * cam.shake.t)
+			cam.y += cam.shake.y * sin(3.1415*0.5 * cam.shake.fy * cam.shake.t)
+			cam.shake.t-=1/30
+		else
+			cam.shake.x=0 cam.shake.fx=0
+			cam.shake.y=0 cam.shake.fy=0
+		end
 	end
 
 	function draw_camera()
+		camera(cam.x,cam.y)
 		cls()
+	end
+
+	function cam_shake(x, y, t, fx, fy)
+		cam.shake.x=max(x, cam.shake.x)
+		cam.shake.y=max(y, cam.shake.y)
+		cam.shake.t=max(t, cam.shake.t)
+		cam.shake.fx=max(fx, cam.shake.fx)
+		cam.shake.fy=max(fy, cam.shake.fy)
 	end
 
 	function cam_move_to(x,y)
@@ -147,7 +181,7 @@ __lua__
 		dx=0
 		dy=0
 
-		c=box_s2w(cam_bounds)
+		c=box_s2w(cam.bounds)
 
 		if(b.l<c.l) dx+=b.l-c.l
 		if(b.r>c.r) dx+=b.r-c.r
@@ -186,29 +220,30 @@ __lua__
 		newb=cpy(b)
 		newb.l+=flr(fm.x) newb.r+=flr(fm.x)
 		newb.t+=flr(fm.y) newb.b+=flr(fm.y)
-		for x=b.l,b.r,1 do
-			for y=b.t,b.b,1 do
-				col_map[flr(x).." "..flr(y)]=nil
-			end
-		end
+		col_free_box(b)
 		col_add_box(newb, m)
 		return newb
 	end
 
-	function col_get_point(x,y,mask)
+	function col_get_mask(x, y)
 		map_mask = fget(mget(flr(x/8),flr(y/8)))
 		col_mask = col_map[flr(x).." "..flr(y)]
 		if (col_mask==nil) col_mask=0
-		return band(map_mask, mask)!=0 or band(col_mask, mask)!=0
+		return bor(col_mask, map_mask)
 	end
 
-	function col_free_box(b,m)
-		for x=b.l,b.r,1 do
-			for y=b.t,b.b,1 do
-				if(col_get_point(x,y,m)) return false
-			end
-		end
-		return true
+	function col_get_point(x,y,mask)
+		m = col_get_mask(x, y)
+		return band(m, mask)!=0
+	end
+
+	function col_free_box(b)
+		col_add_box(b, nil)
+	end
+
+	function col_free_move_point(x, y, dx, dy, cm)
+		b=box(x,y,0,0)
+		return col_free_move(b, dx, dy, cm)
 	end
 
 	function col_free_move(b,dx,dy,cm)
@@ -258,28 +293,32 @@ __lua__
 	end
 
 	function new_check_cols()
-		return {b=false, l=false, r=false, t=false}
+		return {bools={b=false, l=false, r=false, t=false}, masks={b=0, l=0, r=0, t=0}}
 	end
 
 	function check_cols(b, c, m)
 		y=b.t-1
 		for x=b.l,b.r,1 do
-			c.t=col_get_point(x,y,m)
+			c.bools.t=col_get_point(x,y,m)
+			c.masks.t=col_get_mask(x,y)
 			if(c.b) break
 		end
 		y=b.b+1
 		for x=b.l,b.r,1 do
-			c.b=col_get_point(x,y,m)
+			c.bools.b=col_get_point(x,y,m)
+			c.masks.b=col_get_mask(x,y)
 			if(c.b) break
 		end
 		x=b.l-1
 		for y=b.t,b.b,1 do
-			c.l=col_get_point(x,y,m)
+			c.bools.l=col_get_point(x,y,m)
+			c.masks.l=col_get_mask(x,y)
 			if(c.l) break
 		end
 		x=b.r+1
 		for y=b.t,b.b,1 do
-			c.r=col_get_point(x,y,m)
+			c.bools.r=col_get_point(x,y,m)
+			c.masks.r=col_get_mask(x,y)
 			if(c.r) break
 		end
 	end
@@ -297,19 +336,21 @@ __lua__
 		end
 	end
 
-	function new_body(x,y,sx, sy, m, cm, f, sprite, z)
+	function new_body(x,y,sx, sy, m, cm)
 		body={
 			box=box(x,y,sx,sy),
 			speed={x=0,y=0},
 			mask=m,
-			col_with=cm,
-			friction = f,
-			z=z
+			col_with=cm
 		}
 		col_add_box(body.box, body.mask)
         add(bodies, body)
-		sort(bodies, function(a,b) return a.z>b.z end)
 		return body
+	end
+
+	function remove_body(body)
+		col_free_box(body.box)
+		del(bodies, body)
 	end
 
 	function clamp_speed(body)
@@ -327,29 +368,25 @@ __lua__
 -->8
 --> EFFECTS
 particles={}
+nparts = 0
 
-function create_raw_particles(x, y, lt, draw)
+function create_raw_particles(x, y, lt, np, draw)
 	pcl={
 		x=x,
 		y=y,
 		lifetime=lt,
 		draw=draw,
 		timer=0.0,
+		npart=np
 	}
 	add(particles, pcl)
+	nparts += np
 	return pcl
 end
 
-function create_particles(x, y, lt, init, draw)
-	pcl={
-		x=x,
-		y=y,
-		lifetime=lt,
-		draw=draw,
-		timer=0.0,
-	}
+function create_particles(x, y, lt, np, init, draw)
+	create_raw_particles(x, y, lt, np, draw)
 	init(pcl)
-	add(particles, pcl)
 end
  
 
@@ -357,6 +394,7 @@ function draw_particles()
 	printui(''..#particles, 10, 10)
 	for pcl in all(particles) do
 		if (pcl.timer >= pcl.lifetime and pcl.lifetime > 0) then
+			nparts -= pcl.npart
 			del(particles, pcl)
 		else
 			pcl.draw(pcl)
@@ -364,19 +402,24 @@ function draw_particles()
 	end
 end
 
-function explosion(x, y, lt)
-	create_particles(x, y, lt, init_explosion, draw_explosion)
+function explosion(pos, radius, blow, np)
+	pcl = create_raw_particles(pos.x, pos.y, 0.3, np, draw_explosion)
+	pcl.radius = radius
+	pcl.blow = blow
+	init_explosion(pcl)
 end
 
 function init_explosion(pcl)
 	pcl.pcs = {}
-	for i=1,20,1 do
+	for i=1,pcl.npart,1 do
 		a=rnd(6.28)
 		pc = {
-			x=pcl.x,
-			sx=cos(a)*(1-rnd(1)),
-			y=pcl.y,
-			sy=sin(a)*(1-rnd(1))-2-rnd(3),
+			x=pcl.x + rnd(pcl.radius*0.5)-pcl.radius*0.25,
+			y=pcl.y + rnd(pcl.radius*0.5)-pcl.radius*0.25,
+			s = {
+				x=cos(a)*(pcl.blow-rnd(pcl.blow*0.5)),
+				y=sin(a)*(pcl.blow-rnd(pcl.blow*0.5))
+			},
 			lt=pcl.lifetime*(rnd(0.4)+1)
 		}
 		add(pcl.pcs, pc)
@@ -387,19 +430,20 @@ function draw_explosion(pcl)
 	for pc in all(pcl.pcs) do
 		p = 1-(pc.lt / pcl.lifetime)
 		if p<0.2 then
-			circ(pc.x, pc.y,0,7)
+			pset(pc.x, pc.y,7)
 		elseif p<0.4 then
-			circ(pc.x, pc.y,0,10)
+			pset(pc.x, pc.y,10)
 		elseif p<0.6 then
-			circ(pc.x, pc.y,0,9)
+			pset(pc.x, pc.y,9)
 		elseif p<0.8 then
-			circ(pc.x, pc.y,0,8)
+			pset(pc.x, pc.y,8)
 		else
-			circ(pc.x, pc.y,0,5)
+			pset(pc.x, pc.y,5)
 		end
-		pc.sx*=1.1-p
-		pc.x+=pc.sx
-		pc.y+=pc.sy
+		pc.s.x*=1.1-p
+		pc.s = col_free_move_point(pc.x, pc.y, pc.s.x, pc.s.y, 0b11)		
+		pc.x+=pc.s.x
+		pc.y+=pc.s.y
 		pc.lt-=1/30
 		if (pc.lt<=0) del(pcl.pcs, pc)
 	end
@@ -408,16 +452,16 @@ function draw_explosion(pcl)
 	end
 end
 
-function blood(x, y)
-	create_particles(x, y, .5, init_blood, draw_blood)
+function blood(pos)
+	create_particles(pos.x, pos.y, .5, 15, init_blood, draw_blood)
 end
 
 function init_blood(pcl)
 	pcl.pcs = {}
-	for i=1,40,1 do
+	for i=1,pcl.npart,1 do
 		a=rnd(6.28)
 		pc = {
-			b=box(pcl.x,pcl.y,0,0),
+			x=pcl.x, y=pcl.y,
 			s={x=cos(a)*rnd(8),	y=-abs(sin(a))-2-rnd(8)},
 			lt=pcl.lifetime*(rnd(0.4)+1)
 		}
@@ -428,12 +472,12 @@ end
 function draw_blood(pcl)
 	for pc in all(pcl.pcs) do
 		p = (pc.lt / pcl.lifetime)
-		circfill(pc.b.l, pc.b.t,2.5*(p-0.2),8)
-		pc.s.y+=gravity.y
-		pc.s = col_free_move(pc.b, pc.s.x, pc.s.y, 0b1)
+		circfill(pc.x, pc.y,2.5*p,8)
+		pc.s.y += gravity.y
+		pc.s = col_free_move_point(pc.x, pc.y, pc.s.x, pc.s.y, 0b1)
 		if (abs(pc.s.y)<0.5) pc.s.x*=0.7
-		pc.b.l=pc.b.l+pc.s.x pc.b.r=pc.b.l
-		pc.b.t=pc.b.t+pc.s.y pc.b.b=pc.b.t
+		pc.x+=pc.s.x
+		pc.y+=pc.s.y
 		pc.lt-=1/30
 		if (pc.lt<=0) del(pcl.pcs, pc)
 	end
@@ -442,8 +486,8 @@ function draw_blood(pcl)
 	end
 end
 
-function air_blow(x, y, sx, sy)
-	pcl = create_raw_particles(x, y, .15, draw_air_blow)
+function air_blow(x, y, sx, sy, n)
+	pcl = create_raw_particles(x, y, .15, n, draw_air_blow)
 	pcl.sx = sx
 	pcl.sy = sy
 	init_air_blow(pcl)
@@ -451,9 +495,9 @@ end
 
 function init_air_blow(pcl)
 	pcl.pcs = {}
-	for i=1,60,1 do
+	for i=1,pcl.npart,1 do
 		pc = {
-			b=box(pcl.x,pcl.y,0,0),
+			x=pcl.x, y=pcl.y,
 			s={x=pcl.sx*(rnd(2)-1), y=pcl.sy*(rnd(2)-1)},
 			lt=pcl.lifetime*(rnd(.5)+.75)
 		}
@@ -464,13 +508,13 @@ end
 function draw_air_blow(pcl)
 	for pc in all(pcl.pcs) do
 		p = (pc.lt / pcl.lifetime)
-		if (p < 0.4) then circ(pc.b.l, pc.b.t,0,6)
-		else circ(pc.b.l, pc.b.t,0,7) end
+		if (p < 0.4) then circ(pc.x, pc.y,0,6)
+		else circ(pc.x, pc.y,0,7) end
 		pc.s.x*=0.5
 		pc.s.y*=0.5
-		pc.s = col_free_move(pc.b, pc.s.x, pc.s.y, 0b1)
-		pc.b.l=pc.b.l+pc.s.x pc.b.r=pc.b.l
-		pc.b.t=pc.b.t+pc.s.y pc.b.b=pc.b.t
+		pc.s = col_free_move_point(pc.x, pc.y, pc.s.x, pc.s.y, 0b1)
+		pc.x+=pc.s.x
+		pc.y+=pc.s.y
 		pc.lt-=1/30
 		if (pc.lt<=0) del(pcl.pcs, pc)
 	end
@@ -487,13 +531,62 @@ end
 	end
 
 	function draw_anim(x, y, anim)
-		i = (anim.dt%#anim.sprites)+1
+		i = flr((anim.dt%#anim.sprites)+1)
 		spr(anim.sprites[i], x, y, anim.w, anim.h, anim.flip_x, anim.flip_y)
+		printui(i, 10 ,10, 7)
 		anim.dt+=anim.speed
 	end
 
 	function reset_anim(anim)
 		anim.dt = 0
+	end
+
+--> PROPS
+	props = {}
+
+	function create_prop(update, draw)
+		prop = {update=update, draw=draw}
+		add(props, prop)
+		return prop
+	end
+
+	function update_props()
+		for prop in all(props) do
+			prop.update(prop)
+		end
+	end
+
+	function draw_props()
+		for prop in all(props) do
+			prop.draw(prop)
+		end
+	end
+
+	function fire_ball(x, y, sx, sy)
+		fb = create_prop(update_fire_ball, draw_fire_ball)
+		fb.body=new_body(x, y, 6, 6, 0b100, 0b11)
+		fb.body.speed.x = sx
+		fb.body.speed.y = sy
+		fb.cols = new_check_cols()
+	end
+
+	function update_fire_ball(fb) 
+		check_cols(fb.body.box, fb.cols, fb.body.col_with)
+		try_kill_player(fb.cols)
+		for _,c in pairs(fb.cols.bools) do
+			if (c) then
+				explosion(box_center(fb.body.box), 6, 1.5, 10)
+				remove_body(fb.body)
+				del(props, fb)
+				cam_shake(1, 1, .1, 5, 5)
+				return
+			end
+		end
+		explosion(box_center(fb.body.box), 12, 1, 5)
+	end
+
+	function draw_fire_ball(fb)
+		spr(54, fb.body.box.l, fb.body.box.t)
 	end
 
 -->8
@@ -614,21 +707,21 @@ __gfx__
 00000555550000000000055555000000000005555500000000f0000f0000000000f0000f0000000000f0000f0000000000000000000000000000000000000000
 000ffff5ffff0000000ffff5ffff0000000ffff5ffff000000ff000ff0000000000f000f0000000000f00000f000000000000000000000000000000000000000
 00066000006660006660000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-006e6000006e60006ee6000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-06ee6000006ee6006e66600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-06666066606666006666c60000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-000666c6c6660000066666e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00006666666000000666660000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0f00666e66600f000555550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0f00056665000fd0f555555000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0f50555155505f0df555555000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0555555d5555550df555555000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0055555d5555000d055555500d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000555d55500dd005555550d0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00005555555dd00005555500d0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000055555000000f555d00d00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-000ffff5ffff0000f5500dd000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000000000f000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+006e6000006e60006ee6000000000000000000000000000000000088000600000000000000000000000000000000000000000000000000000000000000000000
+06ee6000006ee6006e66600000000000000000000000000000000880006560000000000000000000000000000000000000000000000000000000000000000000
+06666066606666006666c60000000000000000000000000008666660065556000000000000000000000000000000000000000000000000000000000000000000
+000666c6c6660000066666e000000000000000000000000088666888655055600000000000000000000000000000000000000000000000000000000000000000
+00006666666000000666660000000000000000000000000008666660065556000000000000000000000000000000000000000000000000000000000000000000
+0f00666e66600f000555550000000000000000000000000000000880006560000000000000000000000000000000000000000000000000000000000000000000
+0f00056665000fd0f555555000000000000000000000000000000088000600000000000000000000000000000000000000000000000000000000000000000000
+0f50555155505f0df555555000000000000000000006600000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0555555d5555550df55555500000000000dd0000006e600000888800000000000000000000000000000000000000000000000000000000000000000000000000
+0055555d5555000d055555500d0000000d00d555506e600008899880000000000000000000000000000000000000000000000000000000000000000000000000
+0000555d55500dd005555550d0000000d00555555566c600089aa980000000000000000000000000000000000000000000000000000000000000000000000000
+00005555555dd00005555500d0000000d0555555555666e0089aa980000070000000000000000000000000000000000000000000000000000000000000000000
+0000055555000000f555d00d00000000d05555555556660008899880000767000000000000000000000000000000000000000000000000000000000000000000
+000ffff5ffff0000f5500dd0000000000d0555555556600000888800000666000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000f0000000000000000d0fff000fff000000000000000666000000000000000000000000000000000000000000000000000000000000000000
 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 3b533b333b3bb5333b3bb5335b3bb5333b533b550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
