@@ -139,23 +139,21 @@ __lua__
 
     function update_player()
 		player.speed.y += .5
+		if (player.ground and (btn(0) or btn(1) or (btn(3)))) then
+			player.crouch=true
+		else 
+			player.crouch=false
+		end
+		if (player.crouch) then
+			player.box.t = player.box.b-8
+		else
+			player.box.t = player.box.b-16
+		end
 		if (btn(0)) then
-			player.crouch=player.crouch and col_map(player.box("down", 0b1,1))
-			if (player.crouch) then
-				player.box.t = player.box.b-8
-			else
-				player.box.t = player.box.b-16
-			end
 			player.flip=true
 			player.right=false
 			player.speed.x -= player.acc
 		elseif (btn(1)) then
-			player.crouch=player.crouch and col_map(player.box("down", 0b1,1))
-			if (player.crouch) then
-				player.box.t = player.box.b-8
-			else
-				player.box.t = player.box.b-16
-			end
 			player.flip=false
 			player.left=false
 			player.speed.x += player.acc
@@ -228,9 +226,10 @@ __lua__
 
 	function draw_player()
 		local b = player.box
+		draw_box(b)
 		if (player.ground) then
-			if (abs(player.speed.x) >= 1 and not player.flip) then draw_anim(b.l, b.t, player.anim.move_right)
-			elseif (abs(player.speed.x) >= 1 and player.flip) then draw_anim(b.l, b.t, player.anim.move_left)
+			if (abs(player.speed.x) >= 1 and not player.flip) then draw_anim(b.l, b.t-8, player.anim.move_right)
+			elseif (abs(player.speed.x) >= 1 and player.flip) then draw_anim(b.l, b.t-8, player.anim.move_left)
 			elseif (player.crouch) then 
 				if (player.flip) then draw_anim(b.l, b.t, player.anim.crouch_left)
 				else draw_anim(b.l, b.t, player.anim.crouch_right) end
@@ -410,7 +409,6 @@ function draw_explosion(pcl)
 			pset(pc.x, pc.y,5)
 		end
 		pc.s.x*=1.1-p
-		if (pcl.simulated) pc.s = col_raycast(pc.x, pc.y, pc.s.x, pc.s.y, 0b11)		
 		pc.x+=pc.s.x
 		pc.y+=pc.s.y
 		pc.lt-=1/30
@@ -445,8 +443,6 @@ function draw_blood(pcl)
 		local p = (pc.lt / pcl.lifetime)
 		circfill(pc.x, pc.y,2.5*p,8)
 		pc.s.y += 1
-		if (pcl.simulated) pc.s = col_raycast(pc.x, pc.y, pc.s.x, pc.s.y, 0b1)
-		if (abs(pc.s.y)<0.5) pc.s.x*=0.7
 		pc.x+=pc.s.x
 		pc.y+=pc.s.y
 		pc.lt-=1/30
@@ -455,6 +451,44 @@ function draw_blood(pcl)
 	if #pcl.pcs==0 then
 		pcl.timer=pcl.lifetime+1
 	end
+end
+
+function stars(pos, msg, simulated)
+	local pcl=create_raw_particles(pos.x, pos.y, 2, 100, draw_stars)
+	pcl.msg=msg
+	pcl.simulated=simulated
+	init_stars(pcl)
+end
+
+function init_stars(pcl)
+	pcl.pcs = {}
+	for i=1,pcl.npart,1 do
+		local a=rnd(1)
+		local pc = {
+			x=pcl.x, y=pcl.y,
+			s={x=cos(a)*2+(rnd(3)-1.5),	y=sin(a)*4-2},
+			lt=pcl.lifetime*(rnd(0.4)+1)
+		}
+		add(pcl.pcs, pc)
+	end
+end
+
+function draw_stars(pcl)
+	for pc in all(pcl.pcs) do
+		local p = (pc.lt / pcl.lifetime)
+		circfill(pc.x, pc.y, 1-p,10)
+		pc.s.x*=0.8
+		pc.s.y*=0.8
+		pc.x+=pc.s.x
+		pc.y+=pc.s.y
+		pc.lt-=1/30
+		if (pc.lt<=0) del(pcl.pcs, pc)
+	end
+	if #pcl.pcs==0 then
+		pcl.timer=pcl.lifetime+1
+	end
+	draw_clear_box(txt_box(pcl.msg, pcl.x-#pcl.msg*2, pcl.y-20), true)
+	print(pcl.msg, pcl.x-#pcl.msg*2, pcl.y-20)
 end
 
 function air_blow(x, y, sx, sy, n, simulated)
@@ -484,7 +518,6 @@ function draw_air_blow(pcl)
 		else pset(pc.x, pc.y,7) end
 		pc.s.x*=0.5
 		pc.s.y*=0.5
-		if (pcl.simulated) pc.s = col_raycast(pc.x, pc.y, pc.s.x, pc.s.y, 0b1)
 		pc.x+=pc.s.x
 		pc.y+=pc.s.y
 		pc.lt-=1/30
@@ -654,9 +687,14 @@ end
 		line(b.l+1,b.b,b.r-1,b.b,c)
 	end
 
-	function draw_clear_box(b)
-		clear_box(box_s2w(add_box(abs_box(1,1,-1,-1),b)))
-		draw_box(box_s2w(b))
+	function draw_clear_box(b, world)
+		if (not world) then 
+			clear_box(box_s2w(add_box(abs_box(1,1,-1,-1),b)))
+			draw_box(box_s2w(b))
+		else 
+			clear_box(add_box(abs_box(-1,-1,1,1),b))
+			draw_box(add_box(abs_box(-2,-2,2,2),b))
+		end
 	end
 
 	function box_w2s(b)
