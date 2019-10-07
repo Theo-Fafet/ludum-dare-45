@@ -3,27 +3,104 @@ version 18
 __lua__
 -->8
 --> MAIN
+	in_game=false
     function _init()
-		load_level_1()
+		music(0)
+		cls()
+		init_camera()
+		init_menu()
     end
 
     function _update()
-		update_level()
+		if(in_game) then update_level()
+		else update_menu() end
     end
 
     function _draw()
-		draw_level()
-		debug()
+		if (in_game) then draw_level()
+		else draw_menu() end
     end
 
-	debug_mode=false
-	function debug()
-		if(stat(31)=="b" or btnp(4)) debug_mode = not debug_mode
-		if (debug_mode)then
-			draw_clear_box(abs_box(67, 87, 127, 127))
-			printui('ram: '..stat(0), 69, 89, 4)
-			printui('cpu1: '..stat(1), 69, 99,4)
-			printui('npar: '..nparts, 69, 109,4)
+-->8 MENU
+	menu={}
+	function init_menu()
+		menu = {
+			id=0,
+			sub=0,
+			size=32,
+			t=2,
+		}
+	end
+
+	function update_menu()
+		if (menu.sub==0) then -- main
+			if (menu.id==0) then 
+				if (btnp(4) or btnp(5)) then load_level_1()
+				elseif (btnp(3)) then menu.id=1 end
+			elseif (menu.id==1) then 
+				if (btnp(4) or btnp(5)) then menu.sub=1 menu.id=0
+				elseif (btnp(2)) then menu.id=0 end
+			end
+		elseif(menu.sub==1) then -- extras
+			if (btnp(0) or btnp(1) or btnp(2) or btnp(3) or btnp(4) or btnp(5)) then
+				menu.sub=0
+				menu.id=0
+			end
+		end
+	end
+
+	function draw_menu()
+		cls()
+		draw_menu_background()
+		menu.size=sin(menu.t)*2+1
+		menu.t += 1/30
+		if (menu.sub==0) then
+			draw_clear_box(abs_box(44-menu.size, 80-menu.size, 82+menu.size, 101+menu.size))
+			printui("new game", 48, 84-menu.size*0.25, (menu.id==0 and 7 or 6))
+			printui("extras", 52, 94+menu.size*0.25, (menu.id==1 and 7 or 6))
+		elseif (menu.sub==1) then
+			draw_clear_box(abs_box(12-menu.size, 76-menu.size, 116+menu.size, 127))
+			printui("left ⬅️", 24, 80-menu.size*1, 7)
+			printui("➡️ right", 72, 80-menu.size*1, 7)
+			printui("jump ⬆️", 24, 90-menu.size*.8, 7)
+			printui("⬇️", 72, 90-menu.size*.8, 7)
+			printui("crouch", 82, 90-menu.size*.8, 7)
+			printui("made for ludum dare 45 by", 14, 100-menu.size*.6, 11)
+			printui("theo fafet", 44, 110-menu.size*.4, 12)
+			printui("barthelemy passin-cauneau", 14, 120-menu.size*.4, 12)
+		end
+	end
+
+	function draw_menu_background()
+		local pos={x=rnd(128), y=rnd(128)}
+		local s = sin(menu.t)
+
+
+		for i=0, 4, 1 do
+			for j=0, 4, 1 do
+				s = sin(menu.t/10+i*0.25+j*0.25)*5+5
+				rectfill(i*32, j*32, (i+1)*32, (j+1)*32, s+5)
+			end
+		end
+		s = sin(menu.t)
+		if (s>0.9) then
+			explosion(pos, 10, 5, 100, false)
+			blood(pos, false)
+		end
+		draw_particles()
+
+		draw_clear_box(abs_box(4-menu.size, 3-menu.size, 98+menu.size,  38+menu.size))
+		local thierrys = "thierry\'s"
+		for i=1, #thierrys, 1 do
+			local c = sub(thierrys, i, i)
+			s = sin(menu.t+i*0.25)/2+0.5
+			printui(c, 7*i+5, 8+s*3, flr(s*3)+11)
+		end
+		local adventure = "adventure"
+		for i=1, #adventure, 1 do
+			local c = sub(adventure, i, i)
+			s = cos(menu.t+i*0.5)/2+0.5
+			printui(c, 7*i+25, 24+s*3, 16-flr(3-s*3)+7)
 		end
 	end
 
@@ -689,6 +766,7 @@ end
 --> LEVELS
 	level = {}
 	function load_level(bounds, spawn_x, spawn_y)
+		in_game=true
 		props={}
 		particles={}
 		level = {bounds=bounds, pbounds=abs_box(bounds.l*8, bounds.t*8, bounds.r*8, bounds.b*8), spawn={x=spawn_x, y=spawn_y}}
@@ -883,5 +961,5 @@ __sfx__
 010f0020260301a00028030260300000000000240302303026030150002403023030210301d5001000000000260301a00028030260300000000000240302303026030150002403023030210301d5002803000000
 000f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __music__
-00 00010244
+03 00010244
 
