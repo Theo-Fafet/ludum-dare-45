@@ -186,16 +186,19 @@ __lua__
 				if (player_col_down() and not player_col_up()) then
 					player.speed.y = -player.jump
 					air_blow(player.box.l+8, player.box.b, 10, 2, 10, false)
+					sfx(12)
 				elseif (player_col_right() and not player_col_up()) then
 					player.speed.x = -player.walljump_x
 					player.speed.y = -player.wall_jump_y
 					player.flip = true
 					air_blow(player.box.r, player.box.t+8, 2, 10, 10, false)
+					sfx(12)
 				elseif (player_col_left() and not player_col_up()) then
 					player.speed.x = player.walljump_x
 					player.speed.y = -player.wall_jump_y
 					player.flip = false
 					air_blow(player.box.l, player.box.t+8, 2, 10, 10, false)
+					sfx(12)
 				end
 			end
 			if player.speed.y > 0 then
@@ -265,7 +268,8 @@ __lua__
 	end
 
 	function player_die()
-		cam_shake(5, 5, .2, 10, 10)		
+		cam_shake(5, 5, .2, 10, 10)	
+		sfx(11)
 		blood(box_center(player.box), btn(0,2))
 		player.dead = true
 		player.dead_time=0
@@ -492,6 +496,7 @@ function init_stars(pcl)
 		}
 		add(pcl.pcs, pc)
 	end
+	sfx(12)
 end
 
 function draw_stars(pcl)
@@ -599,6 +604,7 @@ end
 			explosion(box_center(fb.box), 6, 1.5, 10, false)
 			del(props, fb)
 			cam_shake(1, 1, .1, 5, 5)
+			sfx(10)
 			return
 		end
 		explosion(box_center(fb.box), 12, 1, 5, false)
