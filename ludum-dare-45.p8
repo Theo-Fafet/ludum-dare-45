@@ -109,7 +109,7 @@ __lua__
 
     function init_player()
 		player={
-            box=box(level.spawn.x, level.spawn.y, 15, 16),
+            box=box(level.spawn.x, level.spawn.y, 8, 16),
 			anim={
 				idle=create_anim_w_by_h({0, 2, 4}, 2, 2, false, false, .5),
 				move_right=create_anim_w_by_h({6, 8, 10}, 2, 2, false, false, .5),
@@ -133,110 +133,117 @@ __lua__
 			wall_jump_y=3,
 			max_run=3.5,
 			max_fall=6,
-			friction=0.6
+			friction=0.6,
+			can_jump=false, can_crouch=false, can_move=false,
+			dead=false, dead_time=0
         }
 	end
 
+	function player_col_right() return col_map(player.box, "right", 1, 1) end
+	function player_col_left() return col_map(player.box, "left", 1, 1) end
+	function player_col_up() return col_map(player.box, "up", 1, 1) end
+	function player_col_down() return col_map(player.box, "down", 1, 1) end
+
     function update_player()
-		player.speed.y += .5
-		if (player.ground and (btn(0) or btn(1) or (btn(3)))) then
-			player.crouch=true
+		if (not player.dead) then
+			local _crouch = player.crouch
+			player.speed.y += .5
+			if (player.can_crouch) then
+				if (player_col_down() and btn(3) or player.can_move and (btn(0) or btn(1))) then
+					player.crouch=true
+				else
+					player.crouch=false
+				end
+			end
+			if (not player_col_down()) then player.crouch = false end
+			if (player.crouch and not _crouch) then
+				player.box = abs_box(player.box.l-4, player.box.t+6, player.box.r+4, player.box.b) 
+			elseif (not player.crouch and _crouch) then
+				player.box = abs_box(player.box.l+4, player.box.t-6, player.box.r-4, player.box.b) 
+			end
+			if (player.can_move) then
+				if (btn(0) and not player_col_left()) then
+					player.flip=true
+					player.speed.x -= player.acc
+				elseif (btn(1) and not player_col_right()) then
+					player.flip=false
+					player.speed.x += player.acc
+				elseif (player_col_down())  then
+					player.speed.x *= player.friction
+				end
+			end
+			if (player.can_jump and btnp(2)) then
+				if (player_col_down() and not player_col_up()) then
+					player.speed.y = -player.jump
+					air_blow(player.box.l+8, player.box.b, 10, 2, 10, false)
+				elseif (player_col_right() and not player_col_up()) then
+					player.speed.x = -player.walljump_x
+					player.speed.y = -player.wall_jump_y
+					player.flip = true
+					air_blow(player.box.r, player.box.t+8, 2, 10, 10, false)
+				elseif (player_col_left() and not player_col_up()) then
+					player.speed.x = player.walljump_x
+					player.speed.y = -player.wall_jump_y
+					player.flip = false
+					air_blow(player.box.l, player.box.t+8, 2, 10, 10, false)
+				end
+			end
+			if player.speed.y > 0 then
+				player.speed.y=mid(-player.max_fall, player.speed.y, player.max_fall)
+				if player_col_down() then
+					player.speed.y=0
+					box_move(player.box, 0, -((player.box.b+1)%8)+1)
+				end
+			elseif( player.speed.y < 0) then
+				player.speed.y=mid(-player.max_fall, player.speed.y, player.max_fall)			
+				if player_col_up() then
+					player.speed.y = 0
+				end
+			end
+
+			if (player.speed.x < 0 or btn(0)) then
+				player.speed.x = mid(-player.max_run, player.speed.x, player.max_run)
+				if (player_col_left() and player.speed.x < 0) then
+					player.speed.x = 0
+					--box_move(player.box, -((player.box.l+1)%8), 0)
+				end
+			elseif (player.speed.x > 0 or btn(1)) then
+				player.speed.x = mid(-player.max_run, player.speed.x, player.max_run)
+				if (player_col_right()) then
+					player.speed.x = 0
+					--box_move(player.box, -((player.box.r+1)%8), 0)
+				end				
+			end
+
+			if (col_map(player.box, "left", 0b100, 1) or
+				col_map(player.box, "right", 0b100, 1) or
+				col_map(player.box, "up", 0b100, 1) or
+				col_map(player.box, "down", 0b100, 1))
+			then player_die() return end
+			box_move(player.box, player.speed.x, player.speed.y)
 		else 
-			player.crouch=false
-		end
-		if (player.crouch) then
-			player.box.t = player.box.b-8
-		else
-			player.box.t = player.box.b-16
-		end
-		if (btn(0)) then
-			player.flip=true
-			player.right=false
-			player.speed.x -= player.acc
-		elseif (btn(1)) then
-			player.flip=false
-			player.left=false
-			player.speed.x += player.acc
-		elseif (player.ground)  then
-			player.speed.x *= player.friction
-		end
-		if (btnp(2) and player.ground and not player.ceil) then
-			player.speed.y = -player.jump
-			player.ground = false
-			air_blow(player.box.l+8, player.box.b, 10, 2, 10, false)
-		elseif (btnp(2) and player.right and not player.ceil) then
-			player.speed.x = -player.walljump_x
-			player.speed.y = -player.wall_jump_y
-			player.right = false
-			player.flip = true
-			air_blow(player.box.r, player.box.t+8, 2, 10, 10, false)
-		elseif (btnp(2) and player.left and not player.ceil) then
-			player.speed.x = player.walljump_x
-			player.speed.y = -player.wall_jump_y
-			player.left = false
-			player.flip = false
-			air_blow(player.box.l, player.box.t+8, 2, 10, 10, false)
-		end
-		if player.speed.y > 0 then
-			player.ceil=false
-			player.speed.y=mid(-player.max_fall, player.speed.y, player.max_fall)
-			if col_map(player.box, "down", 0b1, 1) then
-				player.speed.y=0
-				box_move(player.box, 0, -((player.box.b+1)%8)+1)
-				if (not player.ground) then
-					air_blow(player.box.l+8, player.box.b-1, 10, 2, 10, false)
-					player.ground=true
-				end
+			if (player.dead_time >= 0.5) then
+				progress.load()
 			end
-		elseif( player.speed.y < 0) then
-			player.ground = false
-			player.speed.y=mid(-player.max_fall, player.speed.y, player.max_fall)			
-			if col_map(player.box, "up", 0b1, 1) then
-				player.speed.y = 0
-				player.ceil=true
-			end
+				player.dead_time+=1/30
 		end
-		
-		
-
-		if (player.speed.x < 0) then
-			player.speed.x = mid(-player.max_run, player.speed.x, player.max_run)
-			if (col_map(player.box, "left", 0b1, 1)) then
-				player.speed.x = 0
-				box_move(player.box, -((player.box.l+1)%8)+1, 0)
-				if (not player.ground and not player.ceil) then
-					air_blow(player.box.l+1, player.box.t+8, 2, 10, 5, false)
-				end
-				player.left = true
-			end
-		elseif (player.speed.x > 0) then
-			player.speed.x = mid(-player.max_run, player.speed.x, player.max_run)
-			if (col_map(player.box, "right", 0b1, 1)) then
-				player.speed.x = 0
-				box_move(player.box, -((player.box.r+1)%8), 0)
-				if (not player.ground and not player.ceil) then
-					air_blow(player.box.r-1, player.box.t+8, 2, 10, 5, false)
-				end
-				player.right = true
-			end
-		end
-
-		box_move(player.box, player.speed.x, player.speed.y)
 	end
 
 	function draw_player()
-		local b = player.box
-		draw_box(b)
-		if (player.ground) then
-			if (abs(player.speed.x) >= 1 and not player.flip) then draw_anim(b.l, b.t-8, player.anim.move_right)
-			elseif (abs(player.speed.x) >= 1 and player.flip) then draw_anim(b.l, b.t-8, player.anim.move_left)
-			elseif (player.crouch) then 
-				if (player.flip) then draw_anim(b.l, b.t, player.anim.crouch_left)
-				else draw_anim(b.l, b.t, player.anim.crouch_right) end
-			else draw_anim(b.l, b.t, player.anim.idle) end
-		elseif (player.left and not player.ceil) then draw_anim(b.l, b.t, player.anim.wall_left)
-		elseif (player.right and not player.ceil) then draw_anim(b.l, b.t, player.anim.wall_right)
-		else draw_anim(b.l, b.t, player.anim.jump) end
+		if (not player.dead) then
+			local b = player.box
+			draw_box(b)
+			if (player_col_down()) then
+				if (btn(1) and not player.flip) then draw_anim(b.l, b.b-16, player.anim.move_right)
+				elseif (btn(0) and player.flip) then draw_anim(b.l, b.b-16, player.anim.move_left)
+				elseif (player.crouch) then 
+					if (player.flip) then draw_anim(b.l, b.t+2, player.anim.crouch_left)
+					else draw_anim(b.l, b.t+2, player.anim.crouch_right) end
+				else draw_anim(b.l-3, b.t, player.anim.idle) end
+			elseif (player_col_left()) then draw_anim(b.l, b.t, player.anim.wall_left)
+			elseif (player_col_right()) then draw_anim(b.l-8, b.t, player.anim.wall_right)
+			else draw_anim(b.l-3, b.t, player.anim.jump) end
+		end
 	end
 
 	function try_kill_player(cols)
@@ -250,7 +257,8 @@ __lua__
 	function player_die()
 		cam_shake(5, 5, .2, 10, 10)		
 		blood(box_center(player.box), btn(0,2))
-		init_player()
+		player.dead = true
+		player.dead_time=0
 	end
 
 	function hit_player(b)
@@ -264,13 +272,15 @@ __lua__
 
 	function col_map(b,dir,m, d)
 		local c = {}
-
-		if dir=="left"      then c = abs_box(b.l-d, b.t+1, b.l, b.b-1)
-		elseif dir=="right" then c = abs_box(b.r, b.t+1, b.r+d, b.b-1)
-		elseif dir=="up"    then c = abs_box(b.l+1, b.t-d, b.r-1, b.t)
-		else c = abs_box(b.l+1, b.b, b.r-1, b.b+d) end
-		--if (dir=="down") return true
-		return hit_map(c, m)
+		local r=false
+		for i=0,d,1 do
+			if dir=="left"      then c = abs_box(b.l-i, b.t+2, b.l, b.b-2)
+			elseif dir=="right" then c = abs_box(b.r, b.t+2, b.r+i, b.b-2)
+			elseif dir=="up"    then c = abs_box(b.l+2, b.t-i, b.r-2, b.t)
+			else c = abs_box(b.l+2, b.b, b.r-2, b.b+i) end
+			r = r or hit_map(c, m)
+		end
+		return r
 	end
 
 	function hit_map(b, m)
@@ -292,7 +302,7 @@ __lua__
 
     function update_camera()
 		local x= mid(0, box_center(player.box).x-64, 1024)
-		local y= mid(level.top_y*8, box_center(player.box).y-64, level.bot_y)
+		local y= player.box.b-80
 		if (cam.shake.t > 0) then
 			cam.shake.x += cam.shake.px * cos(0.5 * cam.shake.fx * cam.shake.t)
 			cam.shake.y += cam.shake.py * sin(0.5 * cam.shake.fy * cam.shake.t)
@@ -306,7 +316,8 @@ __lua__
 	end
 
 	function draw_camera()
-		camera(cam.x+cam.shake.x,cam.y+cam.shake.y)
+		--camera(cam.x+cam.shake.x,cam.y+cam.shake.y)
+		camera(cam.x,cam.y)
 		cls()
 		
 	end
@@ -574,13 +585,11 @@ end
 	end
 
 	function update_fire_ball(fb) 
-		for _,c in pairs(fb.cols.masks) do
-			if (hit_map(fb.box, 0b1) or hit_player(fb.box)) then
-				explosion(box_center(fb.box), 6, 1.5, 10, false)
-				del(props, fb)
-				cam_shake(1, 1, .1, 5, 5)
-				return
-			end
+		if (hit_map(fb.box, 0b1) or hit_player(fb.box)) then
+			explosion(box_center(fb.box), 6, 1.5, 10, false)
+			del(props, fb)
+			cam_shake(1, 1, .1, 5, 5)
+			return
 		end
 		explosion(box_center(fb.box), 12, 1, 5, false)
 		box_move(fb.box, fb.speed.x, fb.speed.y)
@@ -796,15 +805,18 @@ end
 
 -->8
 --> LEVELS
+	progress = {}
 	level = {}
-	function load_level(top_y, bot_y, spawn_x, spawn_y, update, draw)
+	function load_level(spawn_x, spawn_y, update, draw)
 		in_game=true
 		props={}
 		particles={}
-		level = {top_y=top_y, bot_y=bot_y, spawn={x=spawn_x, y=spawn_y}, update=update, draw=draw}
+		level = {spawn={x=spawn_x, y=spawn_y}, update=update, draw=draw}
 		
 		init_player()
 		init_camera()
+		cam.x=player.box.l
+		cam.y=player.box.t
 	end
 
 	function update_level()
@@ -824,22 +836,80 @@ end
 	end
 
 	function load_level_1()
-		load_level(-5, 13, 50, 60, nil, nil)
-		-- ball_thrower(1, 13, 8, -8, {new_timer(5, .25, 5), new_timer(3, .1, 80), new_timer(3, .5, 2)})
-		-- ball_thrower(14, 13, -8, -8, {new_timer(5, .25, 5), new_timer(3, .1, 80), new_timer(3, .5, 2)})
-
-		-- ball_thrower(3, 13, 2, -15, {new_timer(18, .2, 50)})
-		-- ball_thrower(4, 13, 2, -10, {new_timer(18.1, .2, 50)})
-		-- ball_thrower(5, 13, 2, -10, {new_timer(18.1, .2, 50)})
-		-- ball_thrower(6, 13, 2, -10, {new_timer(18.1, .2, 50)})
-
-		-- ball_thrower(12, 13, -2, -15, {new_timer(18.2, .2, 50)})
-		-- ball_thrower(11, 13, -2, -15, {new_timer(18.2, .2, 50)})
-		-- ball_thrower(10, 13, -2, -15, {new_timer(18.2, .2, 50)})
-		-- ball_thrower(9, 13, -2, -10, {new_timer(18.3, .2, 50)})
-
+		progress.load=load_level_1
+		load_level(60, 100, update_level_1, nil)
+		level.t=0
 	end
 
+	function update_level_1()
+		if (level.finished == nil) then
+			if (level.t==30) then
+				stars(box_center(player.box), "new skill: jump")
+				player.can_jump=true
+			end
+
+			if (level.t==8*30) then
+				stars(box_center(player.box), "new skill: crouch")
+				player.can_crouch=true
+			end
+
+			if (level.t==17*30) then
+				stars(box_center(player.box), "new skill: move")
+				player.can_move=true
+			end
+
+			if (level.t >= 3*30 and level.t <= 30*30) then
+				local y1 = 12.8*8
+				local y2 = 11.8*8
+				local y3 = 10.8*8
+				local x1 = 11
+				local x2 = 13.5*8
+				if (level.t==2*30) then fire_ball(x1, y1, 2, 0) -- jump
+				elseif (level.t==3*30) then fire_ball(x2, y1, -2, 0)
+				elseif (level.t==4*30) then fire_ball(x2, y2, -2, 0)
+				elseif (level.t==6*30) then fire_ball(x1, y1, 2, 0) fire_ball(x2, y2, -2, 0)
+				elseif (level.t==10*30) then  fire_ball(x1, y2, 2, 0) fire_ball(x2, y3, -2, 0)-- crouch
+				elseif (level.t==12*30) then  fire_ball(x2, y2, -2, 0) fire_ball(x2, y1, -2, 0)
+				elseif (level.t==14*30) then  fire_ball(x1, y2, 2, 0) fire_ball(x1, y3, 2, 0) fire_ball(x2, y2, -2, 0) fire_ball(x2, y3, -2, 0)
+				end
+			end
+
+			if (level.notice_wall_jump==nil and player.box.l >= 23*8) then
+				stars(box_center(player.box), "new skill: wall jump")
+				level.notice_wall_jump=true
+			end
+		end
+		if (level.finished==nil and is_in_box(122*8, 11*8, player.box)) then
+			stars({x=122*8, y=11*8}, "level complete!")
+			level.finished=true
+			level.t=0
+		end
+
+		if (level.finished==true and level.t >=3*30) load_level_2()
+
+		level.t+=1
+		printui(level.t,0,0,7)
+	end
+
+	function load_level_2()
+		progress.load=load_level_2
+		load_level(4*8, 30*8, nil, nil)
+
+		player.can_jump=true
+		player.can_crouch=true
+		player.can_move=true
+		level.t=0
+	end
+
+	function load_level_3()
+		progress.load=load_level_3
+		load_level(4*8, 50*8, nil, nil)
+
+		player.can_jump=true
+		player.can_crouch=true
+		player.can_move=true
+		level.t=0
+	end
 
 
 __gfx__
@@ -970,9 +1040,9 @@ __map__
 5445454545454545454545454545454545454545454545454553544545455354454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545454545455345455445455345455345455445455345455345454545454545454545454545454553
 5445454545454545454545454545454545454545454545454553544545455354454545454545454545454545454545454545454545454545404040454545454545454545454545454545454345454545454445454545454545454545455345455445455345455345455445455345455345454545454545454545454545454553
 5445454545454545454545454545454545454545454545454553544545455354454545454545454545454545454545454545454545454545535054454545656545454545454545454545435445454545455344454545454545454545455345455445455345455345455445455345455345454545454545454545282945454553
-5445654545454545454545456545454344454565454545454553544565455354454545654545454545454545654545454545454545454545535054454545757545454545454545454543505445454545455350444545454545454545456262626245455345455345655445455345456262626245454545454545383945454553
-5445754545454545454545457545455354454575454545454545454575455354454545754545454545454545754545454245454545454545535054454545666645454545454545454350505445454545455350504445454545454545454545454545455345454545754545456045454545454545454545454545454545454553
-5476664576454545454576456676455354457666457645454545764566765354454576664545454545457645667645425042764545457645535054457645666645764545454576435050505445454576455350505044457645454545764545457645455345457645667645455345454545457645454576454545454545454553
+6045654545454545454545456545456044454565454545454553544565455354454545654545454545454545654545454545454545454545535054454545757545454545454545454543505445454545455350444545454545454545456262626245455345455345655445455345456262626245454545454545383945454553
+6045754545454545454545457545456054454575454545454545454575455354454545754545454545454545754545454245454545454545535054454545666645454545454545454350505445454545455350504445454545454545454545454545455345454545754545456045454545454545454545454545454545454553
+6076664576454545454576456676456054457666457645454545764566765354454576664545454545457645667645425042764545457645535054457645666645764545454576435050505445454576455350505044457645454545764545457645455345457645667645455345454545457645454576454545454545454553
 5040414140414140404140424041425151424242424242424242424242435150424342424342424242424342434242505050424242404042515050424042404240404040404041505050505040414040415151515151414141404140414140414041415140414040414141405141404140414140414140404041414041404151
 4f4f4f4f4f242424242424242424242424242400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
