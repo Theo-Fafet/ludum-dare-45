@@ -128,18 +128,17 @@ __lua__
 			right=false,
 			flip=false,
 			acc=0.5,
-			jump=4,
+			jump=5,
 			walljump_x=4,
 			wall_jump_y=3,
-			max_run=2,
+			max_run=3.5,
 			max_fall=6,
-			friction=0.85
+			friction=0.6
         }
 	end
 
     function update_player()
-		player.speed.y += .3
-		player.ceil = false
+		player.speed.y += .5
 		if (btn(0)) then
 			player.crouch=player.crouch and col_map(player.box("down", 0b1,1))
 			if (player.crouch) then
@@ -181,15 +180,15 @@ __lua__
 			air_blow(player.box.l, player.box.t+8, 2, 10, 10, false)
 		end
 		if player.speed.y > 0 then
+			player.ceil=false
 			player.speed.y=mid(-player.max_fall, player.speed.y, player.max_fall)
-	
 			if col_map(player.box, "down", 0b1, 1) then
 				player.speed.y=0
 				box_move(player.box, 0, -((player.box.b+1)%8)+1)
 				if (not player.ground) then
 					air_blow(player.box.l+8, player.box.b-1, 10, 2, 10, false)
+					player.ground=true
 				end
-				player.ground=true
 			end
 		elseif( player.speed.y < 0) then
 			player.ground = false
@@ -267,10 +266,10 @@ __lua__
 	function col_map(b,dir,m, d)
 		local c = {}
 
-		if dir=="left"      then c = abs_box(b.l-d, b.t, b.l, b.b-1)
-		elseif dir=="right" then c = abs_box(b.r, b.t, b.r+d, b.b-1)
+		if dir=="left"      then c = abs_box(b.l-d, b.t+1, b.l, b.b-1)
+		elseif dir=="right" then c = abs_box(b.r, b.t+1, b.r+d, b.b-1)
 		elseif dir=="up"    then c = abs_box(b.l+1, b.t-d, b.r-1, b.t)
-		else c = abs_box(b.l, b.b, b.r, b.b+d-1) end
+		else c = abs_box(b.l+1, b.b, b.r-1, b.b+d) end
 		--if (dir=="down") return true
 		return hit_map(c, m)
 	end
@@ -293,7 +292,8 @@ __lua__
 	end
 
     function update_camera()
-
+		local x= mid(0, box_center(player.box).x-64, 1024)
+		local y= mid(level.top_y*8, box_center(player.box).y-64, level.bot_y)
 		if (cam.shake.t > 0) then
 			cam.shake.x += cam.shake.px * cos(0.5 * cam.shake.fx * cam.shake.t)
 			cam.shake.y += cam.shake.py * sin(0.5 * cam.shake.fy * cam.shake.t)
@@ -302,13 +302,12 @@ __lua__
 			cam.shake.px=0 cam.shake.fx=0
 			cam.shake.py=0 cam.shake.fy=0
 		end
-		--cam.x+=cam.shake.x
-		--cam.y+=cam.shake.y
-		camera(cam.x,cam.y)
+		cam.x +=(x-cam.x)*0.75
+		cam.y +=(y-cam.y)*0.75
 	end
 
 	function draw_camera()
-		camera(cam.x,cam.y)
+		camera(cam.x+cam.shake.x,cam.y+cam.shake.y)
 		cls()
 		
 	end
@@ -323,18 +322,13 @@ __lua__
 
 --> MAP
     function draw_map()
-		local mx=flr(cam.x/8)+level.bounds.l
-		local my=flr(cam.y/8)+level.bounds.t
-		map(mx,my,mx*8,my*8,min(level.bounds.r-mx,17),min(level.bounds.b-my,17))
+		local mx=flr(cam.x/8)
+		local my=flr(cam.y/8)
+		map(mx,my,mx*8,my*8,17,17)
 	end
 
 	function map_get(x, y)
 		return mget(x/8, y/8)
-		-- if (is_in_box(x,y, level.pbounds)) then
-		-- 	return mget(flr(x/8), flr(y/8))
-		-- else
-		-- 	return 0b001
-		-- end
 	end
 
 	function map_set(x, y, s)
@@ -765,11 +759,11 @@ end
 -->8
 --> LEVELS
 	level = {}
-	function load_level(bounds, spawn_x, spawn_y)
+	function load_level(top_y, bot_y, spawn_x, spawn_y, update, draw)
 		in_game=true
 		props={}
 		particles={}
-		level = {bounds=bounds, pbounds=abs_box(bounds.l*8, bounds.t*8, bounds.r*8, bounds.b*8), spawn={x=spawn_x, y=spawn_y}}
+		level = {top_y=top_y, bot_y=bot_y, spawn={x=spawn_x, y=spawn_y}, update=update, draw=draw}
 		
 		init_player()
 		init_camera()
@@ -778,19 +772,21 @@ end
 	function update_level()
         update_props()
         update_player()
+		if (level.update != nil) level.update()
 		update_camera()
 	end
 
 	function draw_level()
         draw_camera()
         draw_map()
+		if (level.draw != nil) level.draw()
 		draw_particles()
         draw_player()
         draw_props()
 	end
 
 	function load_level_1()
-		load_level(abs_box(0,0,16,16), 50, 60)
+		load_level(-5, 13, 50, 60, nil, nil)
 		-- ball_thrower(1, 13, 8, -8, {new_timer(5, .25, 5), new_timer(3, .1, 80), new_timer(3, .5, 2)})
 		-- ball_thrower(14, 13, -8, -8, {new_timer(5, .25, 5), new_timer(3, .1, 80), new_timer(3, .5, 2)})
 
