@@ -4,28 +4,15 @@ __lua__
 -->8
 --> MAIN
     function _init()
-        init_player()
-        init_camera()
+		load_level_1()
     end
 
     function _update()
-        update_bodies()
-        update_props()
-        update_player()
-		update_camera()
-		if (btnp(5)) then
-			fire_ball(16, 88, 5,-7)
-		end
+		update_level()
     end
 
     function _draw()
-        draw_camera()
-        draw_map()
-		draw_particles()
-        draw_player()
-        draw_props()
-		--print(str_num(player.body.speed.x).." "..str_num(player.body.speed.y), 0, 10, 7)
-
+		draw_level()
 		debug()
     end
 
@@ -45,8 +32,7 @@ __lua__
 
     function init_player()
 		player={
-            body=new_body(64, 64, 15, 15, 0b010, 0b101),
-			cols=new_check_cols(),
+            box=box(level.spawn.x, level.spawn.y, 15, 16),
 			anim={
 				idle=create_anim_w_by_h({0, 2, 4}, 2, 2, false, false, .5),
 				move_right=create_anim_w_by_h({6, 8, 10}, 2, 2, false, false, .5),
@@ -54,66 +40,128 @@ __lua__
 				wall_right=create_anim_w_by_h({34}, 2, 2, true, false, 0),
 				wall_left=create_anim_w_by_h({34}, 2, 2, false, false, 0),
 				jump=create_anim_w_by_h({32}, 2, 2, false, false, 0),
-				crouch_right=create_anim_w_by_h({36}, 2, 2, false, false, 0),
-				crouch_left=create_anim_w_by_h({36}, 2, 2, true, false, 0)
+				crouch_right=create_anim_w_by_h({52}, 2, 1, false, false, 0),
+				crouch_left=create_anim_w_by_h({52}, 2, 1, true, false, 0)
 			},
-			crouch=false
+			speed={x=0,y=0},
+			crouch=false,
+			ground=false,
+			ceil=false,
+			left=false,
+			right=false,
+			flip=false,
+			acc=0.5,
+			jump=4,
+			walljump_x=4,
+			wall_jump_y=3,
+			max_run=2,
+			max_fall=6,
+			friction=0.85
         }
 	end
 
     function update_player()
-		move_player()
-		old_cols = cpy(player.cols)
-		check_cols(player.body.box, player.cols, player.body.col_with)
-		if (not old_cols.bools.b and player.cols.bools.b) then
-			b=box_center(player.body.box)
-			air_blow(b.x, b.y+8, 10, 1, 5)
+		player.speed.y += .3
+		player.ceil = false
+		if (btn(0)) then
+			player.crouch=player.crouch and col_map(player.box("down", 0b1,1))
+			if (player.crouch) then
+				player.box.t = player.box.b-8
+			else
+				player.box.t = player.box.b-16
+			end
+			player.flip=true
+			player.right=false
+			player.speed.x -= player.acc
+		elseif (btn(1)) then
+			player.crouch=player.crouch and col_map(player.box("down", 0b1,1))
+			if (player.crouch) then
+				player.box.t = player.box.b-8
+			else
+				player.box.t = player.box.b-16
+			end
+			player.flip=false
+			player.left=false
+			player.speed.x += player.acc
+		elseif (player.ground)  then
+			player.speed.x *= player.friction
 		end
-	end
-
-    function move_player()
-        dx=(btn(0) and-1 or 0)+(btn(1) and 1 or 0)
-        player.body.speed.x += dx*1.5
-		player.crouch=(player.cols.bools.b and btn(3))
-		if (btnp(2)) then
-			if (player.cols.bools.b) then
-				b=box_center(player.body.box)
-				air_blow(b.x, b.y+8, 10, 1, 10)
-				player.body.speed.y += -10
-			elseif (not player.cols.bools.b and player.cols.bools.r and not player.cols.bools.l) then
-				b=box_center(player.body.box)
-				air_blow(b.x+8, b.y, 1, 10, 10)
-				player.body.speed.x += -15
-				player.body.speed.y += -20
-			elseif (not player.cols.bools.b and not player.cols.bools.r and player.cols.bools.l) then
-				b=box_center(player.body.box)
-				air_blow(b.x-6, b.y, 1, 10, 10)
-				player.body.speed.x += 15
-				player.body.speed.y += -20
+		if (btnp(2) and player.ground and not player.ceil) then
+			player.speed.y = -player.jump
+			player.ground = false
+			air_blow(player.box.l+8, player.box.b, 10, 2, 10, false)
+		elseif (btnp(2) and player.right and not player.ceil) then
+			player.speed.x = -player.walljump_x
+			player.speed.y = -player.wall_jump_y
+			player.right = false
+			player.flip = true
+			air_blow(player.box.r, player.box.t+8, 2, 10, 10, false)
+		elseif (btnp(2) and player.left and not player.ceil) then
+			player.speed.x = player.walljump_x
+			player.speed.y = -player.wall_jump_y
+			player.left = false
+			player.flip = false
+			air_blow(player.box.l, player.box.t+8, 2, 10, 10, false)
+		end
+		if player.speed.y > 0 then
+			player.speed.y=mid(-player.max_fall, player.speed.y, player.max_fall)
+	
+			if col_map(player.box, "down", 0b1, 1) then
+				player.speed.y=0
+				box_move(player.box, 0, -((player.box.b+1)%8)+1)
+				if (not player.ground) then
+					air_blow(player.box.l+8, player.box.b-1, 10, 2, 10, false)
+				end
+				player.ground=true
+			end
+		elseif( player.speed.y < 0) then
+			player.ground = false
+			player.speed.y=mid(-player.max_fall, player.speed.y, player.max_fall)			
+			if col_map(player.box, "up", 0b1, 1) then
+				player.speed.y = 0
+				player.ceil=true
 			end
 		end
-		if (player.cols.bools.b and dx == 0) then
-			player.body.speed.x *= 0.5
-		end
-		if (not player.cols.bools.b and player.body.speed.y > 0 and (player.cols.bools.l or player.cols.bools.r)) then
-			player.body.speed.y *= 0.5
-		end
 		
-    end
+		
+
+		if (player.speed.x < 0) then
+			player.speed.x = mid(-player.max_run, player.speed.x, player.max_run)
+			if (col_map(player.box, "left", 0b1, 1)) then
+				player.speed.x = 0
+				box_move(player.box, -((player.box.l+1)%8)+1, 0)
+				if (not player.ground and not player.ceil) then
+					air_blow(player.box.l+1, player.box.t+8, 2, 10, 5, false)
+				end
+				player.left = true
+			end
+		elseif (player.speed.x > 0) then
+			player.speed.x = mid(-player.max_run, player.speed.x, player.max_run)
+			if (col_map(player.box, "right", 0b1, 1)) then
+				player.speed.x = 0
+				box_move(player.box, -((player.box.r+1)%8), 0)
+				if (not player.ground and not player.ceil) then
+					air_blow(player.box.r-1, player.box.t+8, 2, 10, 5, false)
+				end
+				player.right = true
+			end
+		end
+
+		box_move(player.box, player.speed.x, player.speed.y)
+	end
 
 	function draw_player()
-		x = player.body.box.l y = player.body.box.t
-		if (player.cols.bools.b) then
-			if (player.body.speed.x >= 1) then draw_anim(x, y, player.anim.move_right)
-			elseif (player.body.speed.x <= -1) then draw_anim(x, y, player.anim.move_left)
+		local b = player.box
+		if (player.ground) then
+			if (abs(player.speed.x) >= 1 and not player.flip) then draw_anim(b.l, b.t, player.anim.move_right)
+			elseif (abs(player.speed.x) >= 1 and player.flip) then draw_anim(b.l, b.t, player.anim.move_left)
 			elseif (player.crouch) then 
-				if (player.body.speed.x<0) then draw_anim(x, y, player.anim.crouch_left)
-				else draw_anim(x, y, player.anim.crouch_right) end
-			else draw_anim(x, y, player.anim.idle) end
-		elseif (player.cols.bools.l) then draw_anim(x, y, player.anim.wall_left)
-		elseif (player.cols.bools.r) then draw_anim(x, y, player.anim.wall_right)
-		else draw_anim(x, y, player.anim.jump) end
-		
+				if (player.flip) then draw_anim(b.l, b.t, player.anim.crouch_left)
+				else draw_anim(b.l, b.t, player.anim.crouch_right) end
+			else draw_anim(b.l, b.t, player.anim.idle) end
+		elseif (player.left and not player.ceil) then draw_anim(b.l, b.t, player.anim.wall_left)
+		elseif (player.right and not player.ceil) then draw_anim(b.l, b.t, player.anim.wall_right)
+		else draw_anim(b.l, b.t, player.anim.jump) end
 	end
 
 	function try_kill_player(cols)
@@ -126,9 +174,35 @@ __lua__
 
 	function player_die()
 		cam_shake(5, 5, .2, 10, 10)		
-		blood(box_center(player.body.box))
-		remove_body(player.body)
+		blood(box_center(player.box), btn(0,2))
 		init_player()
+	end
+
+	function hit_player(b)
+		local h= is_in_box(b.l, b.t, player.box) or
+				is_in_box(b.r, b.t, player.box) or
+				is_in_box(b.l, b.b, player.box) or
+				is_in_box(b.r, b.b, player.box)
+		if (h) player_die()
+		return h
+	end
+
+	function col_map(b,dir,m, d)
+		local c = {}
+
+		if dir=="left"      then c = abs_box(b.l-d, b.t, b.l, b.b-1)
+		elseif dir=="right" then c = abs_box(b.r, b.t, b.r+d, b.b-1)
+		elseif dir=="up"    then c = abs_box(b.l+1, b.t-d, b.r-1, b.t)
+		else c = abs_box(b.l, b.b, b.r, b.b+d-1) end
+		--if (dir=="down") return true
+		return hit_map(c, m)
+	end
+
+	function hit_map(b, m)
+		return  (band(fget(map_get(b.l, b.t)), m) != 0 or
+				band(fget(map_get(b.r, b.t)), m) != 0 or
+				band(fget(map_get(b.l, b.b)), m) != 0 or
+				band(fget(map_get(b.r, b.b)), m) != 0)
 	end
 
 -->8
@@ -137,241 +211,65 @@ __lua__
     function init_camera()
 		cam={
 			x=0,y=0,
-			bounds=abs_box(60,60,68,68),
-			shake = {x=0, y=0, t=0, fx=0, fy=0}
+			shake = {x=0, y=0, px=0, py=0, t=0, fx=0, fy=0}
 		}
 	end
 
     function update_camera()
-		cam_focus(player.body.box)
+
 		if (cam.shake.t > 0) then
-			cam.x += cam.shake.x * cos(3.1415*0.5 * cam.shake.fx * cam.shake.t)
-			cam.y += cam.shake.y * sin(3.1415*0.5 * cam.shake.fy * cam.shake.t)
+			cam.shake.x += cam.shake.px * cos(0.5 * cam.shake.fx * cam.shake.t)
+			cam.shake.y += cam.shake.py * sin(0.5 * cam.shake.fy * cam.shake.t)
 			cam.shake.t-=1/30
 		else
-			cam.shake.x=0 cam.shake.fx=0
-			cam.shake.y=0 cam.shake.fy=0
+			cam.shake.px=0 cam.shake.fx=0
+			cam.shake.py=0 cam.shake.fy=0
 		end
+		--cam.x+=cam.shake.x
+		--cam.y+=cam.shake.y
+		camera(cam.x,cam.y)
 	end
 
 	function draw_camera()
 		camera(cam.x,cam.y)
 		cls()
+		
 	end
 
 	function cam_shake(x, y, t, fx, fy)
-		cam.shake.x=max(x, cam.shake.x)
-		cam.shake.y=max(y, cam.shake.y)
+		cam.shake.px=max(x, cam.shake.px)
+		cam.shake.py=max(y, cam.shake.py)
 		cam.shake.t=max(t, cam.shake.t)
 		cam.shake.fx=max(fx, cam.shake.fx)
 		cam.shake.fy=max(fy, cam.shake.fy)
 	end
 
-	function cam_move_to(x,y)
-		cam.x=min(896,max(0,x))
-		cam.y=min(128,max(0,y))
-		camera(cam.x,cam.y)
-	end
-
-	function cam_focus(b)
-		cam_move_to(b.l-64,b.t-64)
-	end
-
-	function cam_follow(b)
-		dx=0
-		dy=0
-
-		c=box_s2w(cam.bounds)
-
-		if(b.l<c.l) dx+=b.l-c.l
-		if(b.r>c.r) dx+=b.r-c.r
-		if(b.t<c.t) dy+=b.t-c.t
-		if(b.b>c.b) dy+=b.b-c.b
-
-		cam_move_to(cam.x+dx,cam.y+dy)
-	end
-
 --> MAP
     function draw_map()
-		mx=flr(cam.x/8)
-		my=flr(cam.y/8)
-		map(mx,my,mx*8,my*8,17,17)
+		local mx=flr(cam.x/8)+level.bounds.l
+		local my=flr(cam.y/8)+level.bounds.t
+		map(mx,my,mx*8,my*8,min(level.bounds.r-mx,17),min(level.bounds.b-my,17))
 	end
 
--->8
---> COLLISIONS AND PHYSICS
---> COLLISIONS
-	col_map={}
-
-	function col_add_box(b, m)
-		for x=b.l,b.r,1 do
-			col_map[flr(x).." "..b.t]=m
-			col_map[flr(x).." "..b.b]=m	
-			if(x==b.l or x==b.r)then
-				for y=b.t+1,b.b-1,1 do
-					col_map[flr(x).." "..flr(y)]=m
-				end
-			end
-		end
+	function map_get(x, y)
+		return mget(x/8, y/8)
+		-- if (is_in_box(x,y, level.pbounds)) then
+		-- 	return mget(flr(x/8), flr(y/8))
+		-- else
+		-- 	return 0b001
+		-- end
 	end
 
-	function col_move_box(b, fm, m)
-		if(flr(fm.x)==0 and flr(fm.y)==0) return b
-		newb=cpy(b)
-		newb.l+=flr(fm.x) newb.r+=flr(fm.x)
-		newb.t+=flr(fm.y) newb.b+=flr(fm.y)
-		col_free_box(b)
-		col_add_box(newb, m)
-		return newb
+	function map_set(x, y, s)
+		mset(x, y, s)
 	end
 
-	function col_get_mask(x, y)
-		map_mask = fget(mget(flr(x/8),flr(y/8)))
-		col_mask = col_map[flr(x).." "..flr(y)]
-		if (col_mask==nil) col_mask=0
-		return bor(col_mask, map_mask)
-	end
-
-	function col_get_point(x,y,mask)
-		m = col_get_mask(x, y)
-		return band(m, mask)!=0
-	end
-
-	function col_free_box(b)
-		col_add_box(b, nil)
-	end
-
-	function col_free_move_point(x, y, dx, dy, cm)
-		b=box(x,y,0,0)
-		return col_free_move(b, dx, dy, cm)
-	end
-
-	function col_free_move(b,dx,dy,cm)
-		fm={x=dx,y=dy}
-		f={x=false,y=false}
-		if(dx>0) x=b.r+dx
-		if(dx<0) x=b.l+dx
-		while true do
-			if abs(fm.x)<=0 then break end
-			if f.x then break end
-			for y=b.t,b.b,1 do
-				f.x=(not col_get_point(x,y,cm))
-				if not f.x then break end
-			end
-			if abs(fm.x)<=0 then break end
-			if f.x then break end
-			x-=sgn(dx)
-			fm.x-=sgn(dx)
-		end
-		if(dy>0) y=b.b+dy
-		if(dy<0) y=b.t+dy
-		while true do
-			if abs(fm.y)<=0 then break end
-			if f.y then break end
-			for x=b.l,b.r,1 do
-				f.y=(not col_get_point(x,y,cm))
-				if not f.y then break end
-			end
-			if abs(fm.y)<=0 then break end
-			if f.y then break end
-			y-=sgn(dy)
-			fm.y-=sgn(dy)
-		end
-		if abs(fm.x)>0 and abs(fm.y)>0 then
-			if(fm.x>0)then x=b.r+fm.x else x=b.l+fm.x end
-			if(fm.y>0)then y=b.b+fm.y else y=b.t+fm.y end
-			while true do
-				if(not col_get_point(x,y,cm)) return fm
-				if (sgn(dx)*fm.x<=0 or sgn(dy)*fm.y<=0) return {x=0,y=0}
-				x-=sgn(dx)*dx*0.1
-				y-=sgn(dy)*dy*0.1
-				fm.x-=sgn(dx)*dx*0.1
-				fm.y-=sgn(dy)*dy*0.1
-			end
-		end
-		return fm
-	end
-
-	function new_check_cols()
-		return {bools={b=false, l=false, r=false, t=false}, masks={b=0, l=0, r=0, t=0}}
-	end
-
-	function check_cols(b, c, m)
-		y=b.t-1
-		for x=b.l,b.r,1 do
-			c.bools.t=col_get_point(x,y,m)
-			c.masks.t=col_get_mask(x,y)
-			if(c.b) break
-		end
-		y=b.b+1
-		for x=b.l,b.r,1 do
-			c.bools.b=col_get_point(x,y,m)
-			c.masks.b=col_get_mask(x,y)
-			if(c.b) break
-		end
-		x=b.l-1
-		for y=b.t,b.b,1 do
-			c.bools.l=col_get_point(x,y,m)
-			c.masks.l=col_get_mask(x,y)
-			if(c.l) break
-		end
-		x=b.r+1
-		for y=b.t,b.b,1 do
-			c.bools.r=col_get_point(x,y,m)
-			c.masks.r=col_get_mask(x,y)
-			if(c.r) break
-		end
-	end
-
---> PHYSICS
-    bodies={}
-    gravity={x=0,y=1}
-
-	function update_bodies()
-		for i=1,#bodies,1 do
-            bodies[i].speed.x+=gravity.x
-            bodies[i].speed.y+=gravity.y
-			clamp_speed(bodies[i])
-            move_body(bodies[i])
-		end
-	end
-
-	function new_body(x,y,sx, sy, m, cm)
-		body={
-			box=box(x,y,sx,sy),
-			speed={x=0,y=0},
-			mask=m,
-			col_with=cm
-		}
-		col_add_box(body.box, body.mask)
-        add(bodies, body)
-		return body
-	end
-
-	function remove_body(body)
-		col_free_box(body.box)
-		del(bodies, body)
-	end
-
-	function clamp_speed(body)
-		if (abs(body.speed.x)>7) body.speed.x = sgn(body.speed.x)*7
-        if (abs(body.speed.y)>7) body.speed.y = sgn(body.speed.y)*7
-	end
-
-	function move_body(b)
-		fm=col_free_move(b.box, b.speed.x, b.speed.y, b.col_with)
-		b.speed.x = fm.x
-		b.speed.y = fm.y
-		b.box=col_move_box(b.box, fm, b.mask)
-	end
-
--->8
 --> EFFECTS
 particles={}
 nparts = 0
 
 function create_raw_particles(x, y, lt, np, draw)
-	pcl={
+	local pcl={
 		x=x,
 		y=y,
 		lifetime=lt,
@@ -385,13 +283,12 @@ function create_raw_particles(x, y, lt, np, draw)
 end
 
 function create_particles(x, y, lt, np, init, draw)
-	create_raw_particles(x, y, lt, np, draw)
+	local pcl=create_raw_particles(x, y, lt, np, draw)
 	init(pcl)
 end
  
 
 function draw_particles()
-	printui(''..#particles, 10, 10)
 	for pcl in all(particles) do
 		if (pcl.timer >= pcl.lifetime and pcl.lifetime > 0) then
 			nparts -= pcl.npart
@@ -402,18 +299,19 @@ function draw_particles()
 	end
 end
 
-function explosion(pos, radius, blow, np)
-	pcl = create_raw_particles(pos.x, pos.y, 0.3, np, draw_explosion)
+function explosion(pos, radius, blow, np, simulated)
+	local pcl = create_raw_particles(pos.x, pos.y, 0.3, np, draw_explosion)
 	pcl.radius = radius
 	pcl.blow = blow
+	pcl.simulated=simulated
 	init_explosion(pcl)
 end
 
 function init_explosion(pcl)
 	pcl.pcs = {}
 	for i=1,pcl.npart,1 do
-		a=rnd(6.28)
-		pc = {
+		local a=rnd(1)
+		local pc = {
 			x=pcl.x + rnd(pcl.radius*0.5)-pcl.radius*0.25,
 			y=pcl.y + rnd(pcl.radius*0.5)-pcl.radius*0.25,
 			s = {
@@ -428,7 +326,7 @@ end
 
 function draw_explosion(pcl)
 	for pc in all(pcl.pcs) do
-		p = 1-(pc.lt / pcl.lifetime)
+		local p = 1-(pc.lt / pcl.lifetime)
 		if p<0.2 then
 			pset(pc.x, pc.y,7)
 		elseif p<0.4 then
@@ -441,7 +339,7 @@ function draw_explosion(pcl)
 			pset(pc.x, pc.y,5)
 		end
 		pc.s.x*=1.1-p
-		pc.s = col_free_move_point(pc.x, pc.y, pc.s.x, pc.s.y, 0b11)		
+		if (pcl.simulated) pc.s = col_raycast(pc.x, pc.y, pc.s.x, pc.s.y, 0b11)		
 		pc.x+=pc.s.x
 		pc.y+=pc.s.y
 		pc.lt-=1/30
@@ -452,15 +350,17 @@ function draw_explosion(pcl)
 	end
 end
 
-function blood(pos)
-	create_particles(pos.x, pos.y, .5, 15, init_blood, draw_blood)
+function blood(pos, simulated)
+	local pcl=create_raw_particles(pos.x, pos.y, .5, 15, draw_blood)
+	pcl.simulated=simulated
+	init_blood(pcl)
 end
 
 function init_blood(pcl)
 	pcl.pcs = {}
 	for i=1,pcl.npart,1 do
-		a=rnd(6.28)
-		pc = {
+		local a=rnd(1)
+		local pc = {
 			x=pcl.x, y=pcl.y,
 			s={x=cos(a)*rnd(8),	y=-abs(sin(a))-2-rnd(8)},
 			lt=pcl.lifetime*(rnd(0.4)+1)
@@ -471,10 +371,10 @@ end
 
 function draw_blood(pcl)
 	for pc in all(pcl.pcs) do
-		p = (pc.lt / pcl.lifetime)
+		local p = (pc.lt / pcl.lifetime)
 		circfill(pc.x, pc.y,2.5*p,8)
-		pc.s.y += gravity.y
-		pc.s = col_free_move_point(pc.x, pc.y, pc.s.x, pc.s.y, 0b1)
+		pc.s.y += 1
+		if (pcl.simulated) pc.s = col_raycast(pc.x, pc.y, pc.s.x, pc.s.y, 0b1)
 		if (abs(pc.s.y)<0.5) pc.s.x*=0.7
 		pc.x+=pc.s.x
 		pc.y+=pc.s.y
@@ -486,17 +386,18 @@ function draw_blood(pcl)
 	end
 end
 
-function air_blow(x, y, sx, sy, n)
-	pcl = create_raw_particles(x, y, .15, n, draw_air_blow)
+function air_blow(x, y, sx, sy, n, simulated)
+	local pcl = create_raw_particles(x, y, .15, n, draw_air_blow)
 	pcl.sx = sx
 	pcl.sy = sy
+	pcl.simulated=simulated
 	init_air_blow(pcl)
 end
 
 function init_air_blow(pcl)
 	pcl.pcs = {}
 	for i=1,pcl.npart,1 do
-		pc = {
+		local pc = {
 			x=pcl.x, y=pcl.y,
 			s={x=pcl.sx*(rnd(2)-1), y=pcl.sy*(rnd(2)-1)},
 			lt=pcl.lifetime*(rnd(.5)+.75)
@@ -507,12 +408,12 @@ end
 
 function draw_air_blow(pcl)
 	for pc in all(pcl.pcs) do
-		p = (pc.lt / pcl.lifetime)
-		if (p < 0.4) then circ(pc.x, pc.y,0,6)
-		else circ(pc.x, pc.y,0,7) end
+		local p = (pc.lt / pcl.lifetime)
+		if (p < 0.4) then pset(pc.x, pc.y,6)
+		else pset(pc.x, pc.y,7) end
 		pc.s.x*=0.5
 		pc.s.y*=0.5
-		pc.s = col_free_move_point(pc.x, pc.y, pc.s.x, pc.s.y, 0b1)
+		if (pcl.simulated) pc.s = col_raycast(pc.x, pc.y, pc.s.x, pc.s.y, 0b1)
 		pc.x+=pc.s.x
 		pc.y+=pc.s.y
 		pc.lt-=1/30
@@ -531,9 +432,8 @@ end
 	end
 
 	function draw_anim(x, y, anim)
-		i = flr((anim.dt%#anim.sprites)+1)
+		local i = flr((anim.dt%#anim.sprites)+1)
 		spr(anim.sprites[i], x, y, anim.w, anim.h, anim.flip_x, anim.flip_y)
-		printui(i, 10 ,10, 7)
 		anim.dt+=anim.speed
 	end
 
@@ -545,48 +445,106 @@ end
 	props = {}
 
 	function create_prop(update, draw)
-		prop = {update=update, draw=draw}
+		local prop = {update=update, draw=draw}
 		add(props, prop)
 		return prop
 	end
 
 	function update_props()
 		for prop in all(props) do
-			prop.update(prop)
+			if (prop.update != nil) prop.update(prop)
 		end
 	end
 
 	function draw_props()
 		for prop in all(props) do
-			prop.draw(prop)
+			if (prop.draw != nil) prop.draw(prop)
 		end
 	end
 
 	function fire_ball(x, y, sx, sy)
-		fb = create_prop(update_fire_ball, draw_fire_ball)
-		fb.body=new_body(x, y, 6, 6, 0b100, 0b11)
-		fb.body.speed.x = sx
-		fb.body.speed.y = sy
-		fb.cols = new_check_cols()
+		local fb = create_prop(update_fire_ball, draw_fire_ball)
+		fb.box=box(x+1+sx, y+1+sy, 6, 6)
+		fb.speed={x=sx,y=sy}
+		return fb
 	end
 
 	function update_fire_ball(fb) 
-		check_cols(fb.body.box, fb.cols, fb.body.col_with)
-		try_kill_player(fb.cols)
-		for _,c in pairs(fb.cols.bools) do
-			if (c) then
-				explosion(box_center(fb.body.box), 6, 1.5, 10)
-				remove_body(fb.body)
+		for _,c in pairs(fb.cols.masks) do
+			if (hit_map(fb.box, 0b1) or hit_player(fb.box)) then
+				explosion(box_center(fb.box), 6, 1.5, 10, false)
 				del(props, fb)
 				cam_shake(1, 1, .1, 5, 5)
 				return
 			end
 		end
-		explosion(box_center(fb.body.box), 12, 1, 5)
+		explosion(box_center(fb.box), 12, 1, 5, false)
+		box_move(fb.box, fb.speed.x, fb.speed.y)
 	end
 
 	function draw_fire_ball(fb)
-		spr(54, fb.body.box.l, fb.body.box.t)
+		spr(54, fb.box.l, fb.box.t)
+	end
+
+	function rocket(x, y, pow, target)
+		local rkt = create_prop(update_rocket, draw_rocket)
+		rkt.box=box(x, y, 7, 6)
+		rkt.pow = pow
+		rkt.target = target
+		local dx = box_center(rkt.target).x-box_center(rkt.box).x
+		local dy = box_center(rkt.target).y-box_center(rkt.box).y
+		rkt.a = atan2(dx, dy)
+	end
+
+	function update_rocket(rkt) 
+		if (hit_map(rkt.box, 0b1) or hit_player(rkt.box)) then
+			explosion(box_center(rkt.box), 6, 1.5, 10, false)
+			del(props, rkt)
+			cam_shake(1, 1, .1, 5, 5)
+		end
+
+		local b=box_center(rkt.target)
+		local da=atan2(b.x-rkt.box.l,b.y-rkt.box.t)-rkt.a
+		rkt.a += da
+		
+		box_move(rkt.box, rkt.pow * cos(rkt.a+0.5), rkt.pow * sin(rkt.a+0.5))
+	end
+
+	function draw_rocket(rkt)
+		rspr(38, rkt.box.l, rkt.box.t, rkt.a, 3.5, 3.5)
+	end
+
+	function ball_thrower(x, y, sx, sy, timers)
+		local bt = create_prop(update_ball_thrower, nil)
+		map_set(x, y, 96)
+		bt.x=x bt.y=y
+		bt.sx=sx bt.sy=sy
+		bt.timers = timers
+	end
+
+	function update_ball_thrower(bt)
+		if (#bt.timers==0) return 
+		if (tick_timer(bt.timers[1])) then
+			fire_ball(bt.x,bt.y, bt.sx, bt.sy)
+		end
+		if (bt.timers[1].n<=0) del(bt.timers, bt.timers[1])
+	end
+
+	function rocket_thrower(x, y, pow, target, timers)
+		local bt = create_prop(update_rocket_thrower, nil)
+		map_set(x, y, 97)
+		bt.x=x bt.y=y
+		bt.pow = pow
+		bt.target = target
+		bt.timers = timers
+	end
+
+	function update_rocket_thrower(bt)
+		if (#bt.timers==0) return 
+		if (tick_timer(bt.timers[1])) then
+			rocket(bt.x,bt.y, bt.pow,bt.target)
+		end
+		if (bt.timers[1].n<=0) del(bt.timers, bt.timers[1])
 	end
 
 -->8
@@ -646,9 +604,16 @@ end
 		return {x=0.5*(b.l+b.r), y=0.5*(b.t+b.b)}
 	end
 
+	function box_move(b, dx, dy)
+		b.l+=dx
+		b.r+=dx
+		b.t+=dy
+		b.b+=dy
+	end
+
 --> UTILS
 	function str_num(n,d)
-		str=''..n
+		local str=''..n
 		for i=0,d-#str-1,1 do str='0'..str end
 		return n<1 and sub(str,2) or str
 	end
@@ -662,7 +627,7 @@ end
 	end
 
     function cpy(orig)
-		new={}
+		local new={}
 		for k,v in pairs(orig) do
 			new[k]=v
 		end
@@ -680,11 +645,87 @@ end
 	end
 
 	function pow(a, b)
-		r=1
+		local r=1
 		for i=1,b,1 do
 			r*=a
 		end
 		return r
+	end
+
+	function new_timer(delay, rate, n)
+		return {delay=delay, rate=rate, n=n, t=0, dt=rate}
+	end
+
+	function tick_timer(timer)
+		timer.t+=1/30
+		timer.dt+=1/60
+		if (timer.t > timer.delay and timer.n > 0) then
+			if (timer.dt >= timer.rate) then
+				timer.dt=0
+				timer.n -= 1
+				return true
+			end
+		end
+		return false
+	end
+
+	function rspr(n, x, y, a, px, py)
+		local sx=n%16*8
+		local sy=flr(n/16)*8
+		local cosa = cos(a)
+		local sina = sin(a)
+		for dx=0,7,1 do
+			for dy=0,7,1 do
+				local c = sget(sx+dx, sy+dy)
+				if (c!=0) then
+					local cx=dx-px cy=dy-py
+					pset(x + cx*cosa - cy*sina, y + cx*sina + cy*cosa, c)
+				end
+			end
+		end
+	end
+
+-->8
+--> LEVELS
+	level = {}
+	function load_level(bounds, spawn_x, spawn_y)
+		props={}
+		particles={}
+		level = {bounds=bounds, pbounds=abs_box(bounds.l*8, bounds.t*8, bounds.r*8, bounds.b*8), spawn={x=spawn_x, y=spawn_y}}
+		
+		init_player()
+		init_camera()
+	end
+
+	function update_level()
+        update_props()
+        update_player()
+		update_camera()
+	end
+
+	function draw_level()
+        draw_camera()
+        draw_map()
+		draw_particles()
+        draw_player()
+        draw_props()
+	end
+
+	function load_level_1()
+		load_level(abs_box(0,0,16,16), 50, 60)
+		-- ball_thrower(1, 13, 8, -8, {new_timer(5, .25, 5), new_timer(3, .1, 80), new_timer(3, .5, 2)})
+		-- ball_thrower(14, 13, -8, -8, {new_timer(5, .25, 5), new_timer(3, .1, 80), new_timer(3, .5, 2)})
+
+		-- ball_thrower(3, 13, 2, -15, {new_timer(18, .2, 50)})
+		-- ball_thrower(4, 13, 2, -10, {new_timer(18.1, .2, 50)})
+		-- ball_thrower(5, 13, 2, -10, {new_timer(18.1, .2, 50)})
+		-- ball_thrower(6, 13, 2, -10, {new_timer(18.1, .2, 50)})
+
+		-- ball_thrower(12, 13, -2, -15, {new_timer(18.2, .2, 50)})
+		-- ball_thrower(11, 13, -2, -15, {new_timer(18.2, .2, 50)})
+		-- ball_thrower(10, 13, -2, -15, {new_timer(18.2, .2, 50)})
+		-- ball_thrower(9, 13, -2, -10, {new_timer(18.3, .2, 50)})
+
 	end
 
 
@@ -706,14 +747,14 @@ __gfx__
 00005555555d000000005555555d000000005555555dd00005f5555f5566000005f5555f5566000005f5555f5566000000000000000000000000000000000000
 00000555550000000000055555000000000005555500000000f0000f0000000000f0000f0000000000f0000f0000000000000000000000000000000000000000
 000ffff5ffff0000000ffff5ffff0000000ffff5ffff000000ff000ff0000000000f000f0000000000f00000f000000000000000000000000000000000000000
-00000000000000006660000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00066000006660006ee6000000000000000000000000000000000088000600000000000000000000000000000000000000000000000000000000000000000000
-006e6000006e60006e66600000000000000000000000000000000880006560000000000000000000000000000000000000000000000000000000000000000000
-06ee6066606ee6006666c60000000000000000000000000008666660065556000000000000000000000000000000000000000000000000000000000000000000
-066666c6c6666600066666e000000000000000000000000088666888655055600000000000000000000000000000000000000000000000000000000000000000
-00006666666000000666660000000000000000000000000008666660065556000000000000000000000000000000000000000000000000000000000000000000
-0000666e666000000555550000000000000000000000000000000880006560000000000000000000000000000000000000000000000000000000000000000000
-00000566650000d0f555555000000000000000000000000000000088000600000000000000000000000000000000000000000000000000000000000000000000
+00066000006660006660000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+006e6000006e60006ee6000000000000000000000000000088000000000600000000000000000000000000000000000000000000000000000000000000000000
+06ee6000006ee6006e66600000000000000000000000000008886680006560000000000000000000000000000000000000000000000000000000000000000000
+06666066606666006666c60000000000000000000000000006666688065556000000000000000000000000000000000000000000000000000000000000000000
+000666c6c6660000066666e000000000000000000000000006666688655055600000000000000000000000000000000000000000000000000000000000000000
+00006666666000000666660000000000000000000000000008886680065556000000000000000000000000000000000000000000000000000000000000000000
+0000666e666000000555550000000000000000000000000088000000006560000000000000000000000000000000000000000000000000000000000000000000
+00000566650000d0f555555000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000000
 000055515550000df555555000000000000000000006600000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0000555d5550000df55555500000000000dd0000006e600000888800000000000000000000000000000000000000000000000000000000000000000000000000
 0000555d5550000d055555500d0000000d00d555506e600008899880000000000000000000000000000000000000000000000000000000000000000000000000
